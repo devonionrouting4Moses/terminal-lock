@@ -1,0 +1,73 @@
+
+[workspace]
+members = [
+    "crates/cli",
+    "crates/core",
+    "crates/lib",
+    "crates/auth",
+    "crates/ui",
+    "crates/config",
+    "crates/quotes",
+    "crates/daemon",
+    "crates/ipc",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Moses <moses.muranja@strathmore.edu>"]
+repository = "https://github.com/yourusername/terminal-lock"
+license = "MIT"
+
+[workspace.dependencies]
+# Core dependencies
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Crypto
+argon2 = "0.5"
+rand = "0.9"
+sha2 = "0.10"
+hex = "0.4"
+
+# Terminal UI
+crossterm = "0.29"
+ratatui = "0.29"
+console = "0.16"
+colored = "3.0"
+
+# HTTP client for quotes
+reqwest = { version = "0.12", features = ["json"] }
+
+# File system
+dirs = "6.0"
+tempfile = "3.8"
+
+# Time
+chrono = "0.4"
+
+# Async
+async-trait = "0.1"
+
+# Database
+rusqlite = { version = "0.37", features = ["bundled", "chrono"] }
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# IPC
+bincode = "2.0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

@@ -1,0 +1,29 @@
+[package]
+name = "terminal-lock-daemon"
+version = { workspace = true }
+edition = { workspace = true }
+authors = { workspace = true }
+license = { workspace = true }
+
+[[bin]]
+name = "terminal-lock-daemon"
+path = "src/main.rs"
+
+[dependencies]
+terminal-lock-ipc = { path = "../ipc" }
+terminal-lock-core = { path = "../core" }
+terminal-lock-auth = { path = "../auth" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rusqlite = { workspace = true, features = ["bundled", "chrono"] }
+dirs = { workspace = true }
+libc = "0.2"

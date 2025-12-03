@@ -1,0 +1,42 @@
+[package]
+name = "terminal-lock-cli"
+version = {workspace = true}
+edition = {workspace = true}
+description = "Terminal Lock CLI"
+
+[[bin]]
+name = "terminal-lock"
+path = "src/main.rs"
+
+[dependencies]
+terminal-lock-core = { path = "../core" }
+terminal-lock-auth = { path = "../auth" }
+terminal-lock-config = { path = "../config" }
+terminal-lock-quotes = { path = "../quotes" }
+terminal-lock-ui = { path = "../ui" }
+terminal-lock-ipc = { path = "../ipc" }
+
+# CLI and terminal handling
+clap = { version = "4.4", features = ["derive"] }
+console = { version = "0.16", features = ["ansi-parsing"] }
+colored = "3.0"
+atty = "0.2"
+crossterm = { version = "0.29", features = ["serde"] }
+
+# Async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Date and time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Filesystem and paths
+dirs = "6.0"
+

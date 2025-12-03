@@ -1,0 +1,29 @@
+[package]
+name = "terminal-lock-auth"
+
+version = {workspace = true}
+edition = {workspace = true}
+# license = {workspace = true}
+authors = {workspace = true}
+
+[dependencies]
+terminal-lock-core = { path = "../core" }
+
+anyhow = {workspace = true}
+thiserror = {workspace = true}
+serde = {workspace = true}
+serde_json = {workspace = true}
+chrono = {workspace = true}
+
+# Crypto
+argon2 = {workspace = true}
+rand = {workspace = true}
+sha2 = {workspace = true}
+hex = {workspace = true}
+
+# System interaction
+nix = { version = "0.30", features = ["process", "signal"] }
+
+[[example]]
+name = "custom_auth"
+path = "examples/custom_auth.rs"

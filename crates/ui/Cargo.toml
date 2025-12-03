@@ -1,0 +1,22 @@
+[package]
+name = "terminal-lock-ui"
+version = {workspace = true}
+edition = {workspace = true}
+# authors = ["Moses <moses.muranja@strathmore.edu>"]
+repository = "https://github.com/yourusername/terminal-lock"
+license = "MIT"
+description = "UI components for Terminal Lock"
+
+[dependencies]
+terminal-lock-core = { path = "../core" }
+terminal-lock-auth = { path = "../auth" }
+
+crossterm = {workspace = true}
+colored = {workspace = true}
+console = {workspace = true}
+chrono = {workspace = true}
+rand = {workspace = true}
+
+[[example]]
+name = "color_demo"
+path = "examples/color_demo.rs" 

@@ -1,0 +1,38 @@
+[Unit]
+Description=Terminal Lock Daemon - Centralized Session Management
+Documentation=https://github.com/yourusername/terminal-lock
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/terminal-lock-daemon
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=terminal-lock-daemon
+TasksMax=8
+
+# Security settings (compatible with daemon operation)
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+PrivateDevices=yes
+
+# Allow user namespacing for Tokio thread spawning
+PrivateUsers=no
+
+# Resource limits (increase for daemon)
+LimitNOFILE=65536
+LimitNPROC=4096
+MemoryMax=256M
+
+# Timeout settings
+TimeoutStartSec=10
+TimeoutStopSec=5
+
+[Install]
+WantedBy=default.target

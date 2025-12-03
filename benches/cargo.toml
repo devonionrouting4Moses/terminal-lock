@@ -1,0 +1,13 @@
+[[bench]]
+name = "auth_bench"
+harness = false
+
+[[bench]]
+name = "quote_bench"
+harness = false
+
+[dependencies]
+criterion = { workspace = true }
+terminal-lock-auth = { path = "../crates/auth" }
+terminal-lock-core = { path = "../crates/core" }
+terminal-lock-quotes = { path = "../crates/quotes" }
