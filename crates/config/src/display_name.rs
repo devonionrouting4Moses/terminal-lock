@@ -1,41 +1,26 @@
 use terminal_lock_core::{error::*, paths::Paths};
 
 /// Display name manager
+/// Deprecated - use IPC helper to load/save from database instead
 pub struct DisplayNameManager;
 
 impl DisplayNameManager {
-    /// Load display name
+    /// Load display name from database via IPC
+    /// Deprecated - use IPC helper instead
     pub fn load(paths: &Paths) -> Result<String> {
-        let file = paths.name_file();
-        
-        if !file.exists() {
-            return Ok("User".to_string());
-        }
-
-        let name = std::fs::read_to_string(&file)?
-            .trim()
-            .to_string();
-
-        Ok(if name.is_empty() { "User".to_string() } else { name })
+        // Return default - actual loading should be done via IPC
+        Ok("User".to_string())
     }
 
-    /// Save display name
+    /// Save display name to database via IPC
+    /// Deprecated - use IPC helper instead
     pub fn save(paths: &Paths, name: &str) -> Result<()> {
         if name.trim().is_empty() {
             return Err(Error::InvalidPreference("Display name cannot be empty".into()));
         }
 
-        std::fs::write(paths.name_file(), name.trim())?;
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(
-                paths.name_file(),
-                std::fs::Permissions::from_mode(0o600),
-            )?;
-        }
-
+        // Display name should be saved via IPC to daemon database
+        // This is a no-op now
         Ok(())
     }
 }

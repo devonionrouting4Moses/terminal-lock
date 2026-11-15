@@ -4,6 +4,8 @@ use argon2::{
 };
 // use rand_core::OsRng;
 use terminal_lock_core::{constants::*, error::*, paths::Paths};
+use std::path::PathBuf;
+use rusqlite::OptionalExtension;
 
 /// Password validation
 pub struct PasswordValidator;
@@ -51,7 +53,7 @@ impl PasswordHasher {
     pub fn generate_salt() -> String {
         use rand::Rng;
         let mut rng = rand::rng();
-        let random_bytes: [u8; 16] = rng.random();
+        let random_bytes: [u8; 32] = rng.random();
         let salt = SaltString::encode_b64(&random_bytes)
             .expect("Failed to encode salt");
         salt.to_string()
@@ -80,36 +82,99 @@ impl PasswordHasher {
             .is_ok())
     }
 
-    /// Save password hash and salt to files
-    pub fn save_password(paths: &Paths, password: &str) -> Result<()> {
+
+    /// Save password to database (new database-backed method)
+    pub fn save_password_to_db(
+        db_path: &PathBuf,
+        user_id: u32,
+        password: &str,
+    ) -> Result<String> {
         PasswordValidator::validate(password)?;
 
         let salt = Self::generate_salt();
         let hash = Self::hash_password(password, &salt)?;
 
-        std::fs::write(paths.salt_file(), &salt)?;
-        std::fs::write(paths.pass_hash_file(), &hash)?;
+        // Use dynamic import to avoid circular dependencies
+        use rusqlite::Connection;
+        let conn = Connection::open(db_path)
+            .map_err(|e| Error::Unknown(format!("Failed to open database: {}", e)))?;
 
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(paths.salt_file(), std::fs::Permissions::from_mode(0o600))?;
-            std::fs::set_permissions(paths.pass_hash_file(), std::fs::Permissions::from_mode(0o600))?;
+        let credential_id = uuid::Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| Error::Unknown(format!("Time error: {}", e)))?
+            .as_secs() as i64;
+
+        conn.execute(
+            "INSERT INTO credentials (id, user_id, hashed_password, salt, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                &credential_id,
+                user_id as i32,
+                &hash,
+                &salt,
+                now,
+            ],
+        )
+        .map_err(|e| Error::Unknown(format!("Failed to save credentials: {}", e)))?;
+
+        Ok(credential_id)
+    }
+
+    /// Verify password against database credentials
+    pub fn verify_password_from_db(
+        db_path: &PathBuf,
+        user_id: u32,
+        password: &str,
+    ) -> Result<bool> {
+        use rusqlite::Connection;
+        let conn = Connection::open(db_path)
+            .map_err(|e| Error::Unknown(format!("Failed to open database: {}", e)))?;
+
+        let result: Option<String> = conn.query_row(
+            "SELECT hashed_password FROM credentials WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id as i32],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|e| Error::Unknown(format!("Database query failed: {}", e)))?;
+
+        match result {
+            Some(hash) => Self::verify_password(password, hash.as_str()),
+            None => Err(Error::Unknown("No credentials found for user".into())),
         }
-
-        Ok(())
     }
 
-    /// Load and verify password
-    pub fn verify_stored_password(paths: &Paths, password: &str) -> Result<bool> {
-        let hash = std::fs::read_to_string(paths.pass_hash_file())?;
-        Self::verify_password(password, hash.trim())
+    /// Get stored password hash from database
+    pub fn get_stored_hash_from_db(db_path: &PathBuf, user_id: u32) -> Result<String> {
+        use rusqlite::Connection;
+        let conn = Connection::open(db_path)
+            .map_err(|e| Error::Unknown(format!("Failed to open database: {}", e)))?;
+
+        let hash: String = conn.query_row(
+            "SELECT hashed_password FROM credentials WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![user_id as i32],
+            |row| row.get(0),
+        )
+        .map_err(|e| Error::Unknown(format!("Failed to get credentials: {}", e)))?;
+
+        Ok(hash)
     }
 
-    /// Get stored password hash from file
-    pub fn get_stored_hash(paths: &Paths) -> Result<String> {
-        let hash = std::fs::read_to_string(paths.pass_hash_file())?;
-        Ok(hash.trim().to_string())
+    /// Check if user has credentials in database
+    pub fn has_credentials_in_db(db_path: &PathBuf, user_id: u32) -> Result<bool> {
+        use rusqlite::Connection;
+        let conn = Connection::open(db_path)
+            .map_err(|e| Error::Unknown(format!("Failed to open database: {}", e)))?;
+
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM credentials WHERE user_id = ?1",
+            rusqlite::params![user_id as i32],
+            |row| row.get(0),
+        )
+        .map_err(|e| Error::Unknown(format!("Database query failed: {}", e)))?;
+
+        Ok(count > 0)
     }
 }
 

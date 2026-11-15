@@ -10,6 +10,7 @@ use terminal_lock_core::{
     Paths,
 };
 use terminal_lock_ui::PasswordPrompt;
+use std::path::PathBuf;
 
 pub async fn run(paths: &Paths) -> Result<()> {
     let term = console::Term::stderr();
@@ -65,8 +66,19 @@ pub async fn run(paths: &Paths) -> Result<()> {
         }
     };
 
-    PasswordHasher::save_password(paths, &password)?;
-    println!("{}\n", "✓ Password set securely (Argon2 + salt)".green());
+    // Save password to database
+    let db_path = paths.lock_dir().join("sessions.db");
+    let user_id = unsafe { libc::getuid() } as u32;
+    
+    match PasswordHasher::save_password_to_db(&db_path, user_id, &password) {
+        Ok(credential_id) => {
+            println!("{}\n", "✓ Password set securely (Argon2 + salt)".green());
+        }
+        Err(e) => {
+            eprintln!("{}\n", format!("✗ Failed to save password: {}", e).red());
+            return Err(e);
+        }
+    }
 
     // Step 3: Color Scheme
     println!("{}", "Step 3: Visual Preferences".cyan().bold());

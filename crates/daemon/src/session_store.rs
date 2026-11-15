@@ -119,19 +119,51 @@ impl SessionStore {
                 updated_at INTEGER NOT NULL
             );
             
+            CREATE TABLE IF NOT EXISTS constants (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                description TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            
+            CREATE TABLE IF NOT EXISTS preferences (
+                user_id INTEGER PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                color_scheme TEXT NOT NULL,
+                animations BOOLEAN NOT NULL,
+                animation_type TEXT NOT NULL,
+                quote_source TEXT NOT NULL,
+                greeting_style TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            
+            CREATE TABLE IF NOT EXISTS credentials (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                hashed_password TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+            
             CREATE INDEX IF NOT EXISTS idx_sessions_state ON sessions(state);
             CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
             CREATE INDEX IF NOT EXISTS idx_sessions_pid ON sessions(terminal_pid);
             CREATE INDEX IF NOT EXISTS idx_attempts_timestamp ON attempts(timestamp);
             CREATE INDEX IF NOT EXISTS idx_attempts_user ON attempts(user_id);
+            CREATE INDEX IF NOT EXISTS idx_attempts_shell_pid ON attempts(shell_pid);
             CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_audit_event ON audit_log(event_type);
+            CREATE INDEX IF NOT EXISTS idx_preferences_user ON preferences(user_id);
+            CREATE INDEX IF NOT EXISTS idx_credentials_user ON credentials(user_id);
             
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA cache_size = -64000;
             PRAGMA foreign_keys = ON;",
         )?;
+        
+        // Initialize constants table with default values
+        Self::init_constants(&conn)?;
         
         Ok(SessionStore {
             db_path,
@@ -229,7 +261,7 @@ impl SessionStore {
             return Err(InvalidReason::ManuallyLocked);
         }
         
-        // Calculate time remaining
+        // Calculate time remaining (45-minute session)
         let time_remaining = session.expires_at
             .duration_since(now)
             .map(|d| d.as_secs())
@@ -273,7 +305,7 @@ impl SessionStore {
         Ok(())
     }
 
-    /// List all active sessions
+    /// List all active sessions (45-minute timeout)
     pub fn list_sessions(&self) -> Result<Vec<StoredSession>, Box<dyn std::error::Error>> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let mut stmt = conn.prepare(
@@ -384,7 +416,10 @@ impl SessionStore {
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs() as i64;
         
-        conn.execute(
+        // Use explicit transaction for reliability
+        conn.execute("BEGIN IMMEDIATE", [])?;
+        
+        match conn.execute(
             "INSERT INTO attempts (user_id, timestamp, success, shell_pid, failure_reason)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![
@@ -394,9 +429,16 @@ impl SessionStore {
                 shell_pid.map(|p| p as i32),
                 failure_reason,
             ],
-        )?;
-        
-        Ok(())
+        ) {
+            Ok(_) => {
+                conn.execute("COMMIT", [])?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(Box::new(e))
+            }
+        }
     }
 
     /// Log audit event
@@ -458,5 +500,219 @@ impl SessionStore {
         )?;
         
         Ok(())
+    }
+
+    /// Initialize constants table with default values
+    fn init_constants(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        
+        // Insert constants if they don't exist
+        conn.execute(
+            "INSERT OR IGNORE INTO constants (key, value, description, updated_at) VALUES (?, ?, ?, ?)",
+            params!["SESSION_TTL", "2700", "Session timeout in seconds (45 minutes)", now],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO constants (key, value, description, updated_at) VALUES (?, ?, ?, ?)",
+            params!["INACTIVITY_TIMEOUT", "900", "Inactivity timeout in seconds (15 minutes)", now],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO constants (key, value, description, updated_at) VALUES (?, ?, ?, ?)",
+            params!["MAX_ATTEMPTS_PER_SESSION", "3", "Maximum failed attempts per session", now],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO constants (key, value, description, updated_at) VALUES (?, ?, ?, ?)",
+            params!["MAX_TOTAL_ATTEMPTS", "9", "Global maximum attempts before laptop lock", now],
+        )?;
+        conn.execute(
+            "INSERT OR IGNORE INTO constants (key, value, description, updated_at) VALUES (?, ?, ?, ?)",
+            params!["LOCKOUT_DURATION", "60", "Lockout duration in seconds", now],
+        )?;
+        
+        Ok(())
+    }
+
+    /// Get a constant value from database
+    pub fn get_constant(&self, key: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        
+        let value: Option<String> = conn.query_row(
+            "SELECT value FROM constants WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        ).optional()?;
+        
+        Ok(value)
+    }
+
+    /// Get failed attempts for a specific terminal in the last hour
+    pub fn get_failed_attempts_for_terminal(&self, shell_pid: u32) -> Result<u32, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        let one_hour_ago = now - 3600;
+        
+        let count: u32 = conn.query_row(
+            "SELECT COUNT(*) FROM attempts 
+             WHERE shell_pid = ?1 AND success = 0 AND timestamp > ?2",
+            params![shell_pid as i32, one_hour_ago],
+            |row| row.get(0),
+        )?;
+        
+        Ok(count)
+    }
+
+    /// Save user preferences to database
+    pub fn save_preferences(
+        &self,
+        user_id: u32,
+        display_name: &str,
+        color_scheme: &str,
+        animations: bool,
+        animation_type: &str,
+        quote_source: &str,
+        greeting_style: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        
+        conn.execute(
+            "INSERT OR REPLACE INTO preferences 
+             (user_id, display_name, color_scheme, animations, animation_type, quote_source, greeting_style, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            params![
+                user_id as i32,
+                display_name,
+                color_scheme,
+                animations as i32,
+                animation_type,
+                quote_source,
+                greeting_style,
+                now
+            ],
+        )?;
+        
+        Ok(())
+    }
+
+    /// Get user preferences from database
+    pub fn get_preferences(&self, user_id: u32) -> Result<Option<(String, String, bool, String, String, String)>, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        
+        let result = conn.query_row(
+            "SELECT display_name, color_scheme, animations, animation_type, quote_source, greeting_style 
+             FROM preferences WHERE user_id = ?1",
+            params![user_id as i32],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i32>(2)? != 0,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        ).optional()?;
+        
+        Ok(result)
+    }
+
+    /// Save user credentials (password hash and salt) to database
+    pub fn save_credentials(
+        &self,
+        user_id: u32,
+        hashed_password: &str,
+        salt: &str,
+    ) -> Result<String, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let credential_id = Uuid::new_v4().to_string();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        
+        conn.execute(
+            "INSERT INTO credentials (id, user_id, hashed_password, salt, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                &credential_id,
+                user_id as i32,
+                hashed_password,
+                salt,
+                now,
+            ],
+        )?;
+        
+        Ok(credential_id)
+    }
+
+    /// Get user credentials from database
+    pub fn get_credentials(&self, user_id: u32) -> Result<Option<(String, String)>, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        
+        let result = conn.query_row(
+            "SELECT hashed_password, salt FROM credentials WHERE user_id = ?1 ORDER BY created_at DESC LIMIT 1",
+            params![user_id as i32],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                ))
+            },
+        ).optional()?;
+        
+        Ok(result)
+    }
+
+    /// Update user credentials (for password change)
+    pub fn update_credentials(
+        &self,
+        user_id: u32,
+        hashed_password: &str,
+        salt: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        
+        // Delete old credentials for this user
+        conn.execute(
+            "DELETE FROM credentials WHERE user_id = ?1",
+            params![user_id as i32],
+        )?;
+        
+        // Insert new credentials
+        let credential_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO credentials (id, user_id, hashed_password, salt, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                &credential_id,
+                user_id as i32,
+                hashed_password,
+                salt,
+                now,
+            ],
+        )?;
+        
+        Ok(())
+    }
+
+    /// Check if user has credentials set
+    pub fn has_credentials(&self, user_id: u32) -> Result<bool, Box<dyn std::error::Error>> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        
+        let count: i32 = conn.query_row(
+            "SELECT COUNT(*) FROM credentials WHERE user_id = ?1",
+            params![user_id as i32],
+            |row| row.get(0),
+        )?;
+        
+        Ok(count > 0)
     }
 }

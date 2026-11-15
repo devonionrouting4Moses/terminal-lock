@@ -5,6 +5,7 @@ use terminal_lock_core::{
 };
 
 /// Configuration manager
+/// Deprecated - use IPC helper to load/save from database instead
 pub struct ConfigManager {
     paths: Paths,
     preferences: Preferences,
@@ -12,7 +13,8 @@ pub struct ConfigManager {
 
 impl ConfigManager {
     pub fn new(paths: Paths) -> Result<Self> {
-        let preferences = crate::load_preferences(&paths)?;
+        // Return default preferences - actual loading should be done via IPC
+        let preferences = Preferences::default();
         Ok(Self { paths, preferences })
     }
 
@@ -63,6 +65,8 @@ impl ConfigManager {
     }
 
     fn save(&self) -> Result<()> {
-        crate::save_preferences(&self.paths, &self.preferences)
+        // Preferences should be saved via IPC to daemon database
+        // This is a no-op now
+        Ok(())
     }
 }

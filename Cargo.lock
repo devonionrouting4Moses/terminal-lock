@@ -1726,13 +1726,16 @@ dependencies = [
  "argon2",
  "chrono",
  "hex",
+ "libc",
  "nix",
  "rand",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
  "terminal-lock-core",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
@@ -1747,6 +1750,8 @@ dependencies = [
  "console",
  "crossterm",
  "dirs",
+ "libc",
+ "serde_json",
  "terminal-lock-auth",
  "terminal-lock-config",
  "terminal-lock-core",
@@ -1767,6 +1772,7 @@ dependencies = [
  "serde",
  "serde_json",
  "terminal-lock-core",
+ "terminal-lock-ipc",
  "thiserror",
 ]
 

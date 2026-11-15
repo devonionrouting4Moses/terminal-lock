@@ -8,8 +8,8 @@ use crate::ipc_helper;
 /// 
 /// Checks:
 /// - Session file exists (or daemon has session)
-/// - Session hasn't expired (15-minute hard timeout)
-/// - Session hasn't been idle for 5+ minutes
+/// - Session hasn't expired (45-minute hard timeout)
+/// - Session hasn't been idle for 15+ minutes
 /// - Session lock generation matches current lock generation (not from before a lock)
 pub fn run(paths: &Paths) -> Result<()> {
     // Get shell PID from environment variable

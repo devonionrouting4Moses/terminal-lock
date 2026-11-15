@@ -1,0 +1,425 @@
+# Update activity timestamp and validate session after each command
+postexec() {
+    # Update activity timestamp after command execution
+    terminal-lock extend 2>/dev/null
+    
+    # Check session validity after command
+    terminal-lock check 2>/dev/null
+    if [ $? -ne 0 ]; then
+        # Session invalid - exit shell to force re-authentication
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# ============================================
+
+# ============================================
+
+# HOOK 2: Update activity timestamp and validate session after each command
+
+# HOOK 3: Validate session before EVERY command execution (additional safety)
+
+# ============================================
+
+# ============================================
+
+# HOOK 2: Update activity and validate AFTER each command
+# This extends the idle timeout and validates the session is still valid
+
+# HOOK 3: Validate BEFORE every command execution (extra safety layer)
+# This catches edge cases where session expires between prompt and command
+
+# ============================================
+
+# HOOK 2: Update activity and validate AFTER each command
+# This extends the idle timeout and validates the session is still valid
+
+# HOOK 3: Validate BEFORE every command execution (extra safety layer)
+# This catches edge cases where session expires between prompt and command
+
+# ============================================
+
+# HOOK 2: Update activity and validate AFTER each command
+
+# HOOK 3: Validate BEFORE every command execution
+
+# ============================================
+
+# ============================================
+# Terminal Lock - Session Validation & Extension
+# Uses preexec() as activation trigger
+# Validation DISABLED until first command executes
+# ============================================
+
+# Start with validation DISABLED - only activate on first command
+_TERMINAL_LOCK_READY=0
+
+# HOOK 1: Validate session BEFORE showing prompt
+# This prevents typing in an expired/invalid session
+zle-line-init() {
+    # CRITICAL GUARD: Wait for terminal to be fully ready
+    # Skip validation until explicitly marked as ready
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        zle reset-prompt
+        return 0
+    fi
+    
+    # NOW safe to validate session before showing prompt
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+    
+    zle reset-prompt
+}
+zle -N zle-line-init
+
+# HOOK 2: Update activity and validate AFTER each command
+precmd() {
+    # CRITICAL GUARD: Skip ALL validation during initialization
+    # Only activate after first REAL command has been executed
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        return 0
+    fi
+    
+    # Update activity timestamp (does NOT extend 15-minute expiry)
+    terminal-lock extend 2>/dev/null
+    
+    # Validate session is still valid after command execution
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# HOOK 3: Mark terminal as ready BEFORE first command execution
+# This is the ACTIVATOR for all validation hooks
+preexec() {
+    # First command about to execute - NOW activate all validation
+    _TERMINAL_LOCK_READY=1
+    
+    # Validate session before allowing command to execute
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# ============================================
+# ============================================
+
+# ============================================
+# Terminal Lock - Session Validation & Extension
+# Blocks terminal BEFORE user can type if session invalid
+# Validates after each command execution
+# ============================================
+
+# Multi-layer guard system to prevent premature validation
+_TERMINAL_LOCK_READY=0
+
+# HOOK 1: Validate session BEFORE showing prompt
+# This prevents typing in an expired/invalid session
+zle-line-init() {
+    # CRITICAL GUARD: Wait for terminal to be fully ready
+    # Skip validation until explicitly marked as ready
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        echo "DEBUG: zle-line-init skipped (not ready yet)" >&2
+        zle reset-prompt
+        return 0
+    fi
+    
+    # NOW safe to validate session before showing prompt
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+ 
+    zle reset-prompt
+}
+zle -N zle-line-init
+
+# HOOK 2: Update activity and validate AFTER each command
+precmd() {
+    # CRITICAL GUARD: Skip ALL validation during initialization
+    # Only activate after first REAL command has been executed
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        return 0
+    fi
+    
+    # Update activity timestamp (does NOT extend 15-minute expiry)
+    terminal-lock extend 2>/dev/null
+    
+    # Validate session is still valid after command execution
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# HOOK 3: Mark terminal as ready BEFORE first command execution
+# This is the ACTIVATOR for all validation hooks
+preexec() {
+    # First command about to execute - NOW activate all validation
+    _TERMINAL_LOCK_READY=1
+    
+    # Validate session before allowing command to execute
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}   
+# ============================================
+
+# ============================================
+# Terminal Lock - Session Validation & Extension
+# Uses preexec() as activation trigger
+# Validation DISABLED until first command executes
+# ============================================
+
+# Start with validation DISABLED - only activate on first command
+_TERMINAL_LOCK_READY=0
+
+# HOOK 1: Validate session BEFORE showing prompt
+# This prevents typing in an expired/invalid session
+zle-line-init() {
+    # CRITICAL GUARD: Wait for terminal to be fully ready
+    # Skip validation until explicitly marked as ready
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        zle reset-prompt
+        return 0
+    fi
+    
+    # NOW safe to validate session before showing prompt
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+    
+    zle reset-prompt
+}
+zle -N zle-line-init
+
+# HOOK 2: Update activity and validate AFTER each command
+precmd() {
+    # CRITICAL GUARD: Skip ALL validation during initialization
+    # Only activate after first REAL command has been executed
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        return 0
+    fi
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for extend/check commands
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Update activity timestamp (does NOT extend 15-minute expiry)
+    terminal-lock extend 2>/dev/null
+    
+    # Validate session is still valid after command execution
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# HOOK 3: Mark terminal as ready BEFORE first command execution
+# This is the ACTIVATOR for all validation hooks
+preexec() {
+    # First command about to execute - NOW activate all validation
+    _TERMINAL_LOCK_READY=1
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Validate session before allowing command to execute
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# ============================================
+
+# ============================================
+# Terminal Lock - Session Validation & Extension
+# Uses preexec() as activation trigger
+# Validation DISABLED until first command executes
+# ============================================
+
+# Start with validation DISABLED - only activate on first command
+_TERMINAL_LOCK_READY=0
+
+# HOOK 1: Validate session BEFORE showing prompt
+# This prevents typing in an expired/invalid session
+zle-line-init() {
+    # CRITICAL GUARD: Wait for terminal to be fully ready
+    # Skip validation until explicitly marked as ready
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        zle reset-prompt
+        return 0
+    fi
+    
+    # NOW safe to validate session before showing prompt
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+    
+    zle reset-prompt
+}
+zle -N zle-line-init
+
+# HOOK 2: Update activity and validate AFTER each command
+precmd() {
+    # CRITICAL GUARD: Skip ALL validation during initialization
+    # Only activate after first REAL command has been executed
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        return 0
+    fi
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for extend/check commands
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Update activity timestamp (does NOT extend 15-minute expiry)
+    terminal-lock extend 2>/dev/null
+    
+    # Validate session is still valid after command execution
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# HOOK 3: Mark terminal as ready BEFORE first command execution
+# This is the ACTIVATOR for all validation hooks
+preexec() {
+    # First command about to execute - NOW activate all validation
+    _TERMINAL_LOCK_READY=1
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Validate session before allowing command to execute
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# ============================================
+# Terminal Lock - Authentication System
+# Each terminal requires independent authentication
+# ============================================
+if [[ -o interactive && -t 0 ]]; then
+    if command -v terminal-lock &> /dev/null; then
+        # CRITICAL: Export shell PID so terminal-lock knows which session to use
+        export TERMINAL_LOCK_SESSION_PID=$$
+        
+        # Authenticate and create session
+        terminal-lock auth 2>&1
+        if [ $? -ne 0 ]; then
+            echo "❌ Authentication failed"
+            exit 1
+        fi
+        
+        # CRITICAL: Allow greeting to complete before hooks start running
+        sleep 0.3
+        
+        # Verify session was actually created before proceeding
+        # (Skip if setup not done yet - terminal-lock check will fail gracefully)
+        terminal-lock check 2>/dev/null || true
+    else
+        echo "❌ terminal-lock command not found. Install it first."
+        exit 1
+    fi
+fi
+
+# ============================================
+# Terminal Lock - Session Validation & Extension
+# Uses preexec() as activation trigger
+# Validation DISABLED until first command executes
+# ============================================
+
+# Start with validation DISABLED - only activate on first command
+_TERMINAL_LOCK_READY=0
+
+# HOOK 1: Validate session BEFORE showing prompt
+# This prevents typing in an expired/invalid session
+zle-line-init() {
+    # CRITICAL GUARD: Wait for terminal to be fully ready
+    # Skip validation until explicitly marked as ready
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        zle reset-prompt
+        return 0
+    fi
+    
+    # NOW safe to validate session before showing prompt
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+    
+    zle reset-prompt
+}
+zle -N zle-line-init
+
+# HOOK 2: Update activity and validate AFTER each command
+precmd() {
+    # CRITICAL GUARD: Skip ALL validation during initialization
+    # Only activate after first REAL command has been executed
+    if [ $_TERMINAL_LOCK_READY -eq 0 ]; then
+        return 0
+    fi
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for extend/check commands
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Update activity timestamp (does NOT extend 15-minute expiry)
+    terminal-lock extend 2>/dev/null
+    
+    # Validate session is still valid after command execution
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}
+
+# HOOK 3: Mark terminal as ready BEFORE first command execution
+# This is the ACTIVATOR for all validation hooks
+preexec() {
+    # First command about to execute - NOW activate all validation
+    _TERMINAL_LOCK_READY=1
+    
+    # IMPORTANT: Must export TERMINAL_LOCK_SESSION_PID for check command
+    export TERMINAL_LOCK_SESSION_PID=$$
+    
+    # Validate session before allowing command to execute
+    if ! terminal-lock check 2>/dev/null; then
+        echo ""
+        echo "🔐 Session expired or invalid. Please authenticate again."
+        exit 1
+    fi
+}

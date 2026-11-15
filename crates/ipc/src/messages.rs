@@ -33,6 +33,35 @@ pub enum DaemonRequest {
         shell_pid: Option<u32>,
     },
 
+    /// Get failed attempts for a terminal
+    GetAttemptHistory {
+        shell_pid: u32,
+    },
+
+    /// Log a failed authentication attempt
+    LogFailedAttempt {
+        shell_pid: u32,
+    },
+
+    /// Get all constants from database
+    GetConstants,
+
+    /// Save user preferences
+    SavePreferences {
+        user_id: u32,
+        display_name: String,
+        color_scheme: String,
+        animations: bool,
+        animation_type: String,
+        quote_source: String,
+        greeting_style: String,
+    },
+
+    /// Get user preferences
+    GetPreferences {
+        user_id: u32,
+    },
+
     /// List all active sessions
     ListSessions,
     
@@ -97,6 +126,42 @@ pub enum DaemonResponse {
         sessions: Vec<SessionStatus>,
     },
 
+    /// Attempt history for a terminal
+    AttemptHistory {
+        shell_pid: u32,
+        failed_attempts: u32,
+    },
+
+    /// Failed attempt logged
+    FailedAttemptLogged {
+        shell_pid: u32,
+    },
+
+    /// Constants from database
+    Constants {
+        session_ttl_secs: u64,
+        inactivity_timeout_secs: u64,
+        max_attempts_per_session: u32,
+        max_total_attempts: u32,
+        lockout_duration_secs: u64,
+    },
+
+    /// Preferences saved successfully
+    PreferencesSaved {
+        user_id: u32,
+    },
+
+    /// User preferences retrieved
+    Preferences {
+        user_id: u32,
+        display_name: String,
+        color_scheme: String,
+        animations: bool,
+        animation_type: String,
+        quote_source: String,
+        greeting_style: String,
+    },
+
     /// All sessions paused
     AllSessionsPaused,
 
@@ -132,10 +197,10 @@ pub enum InvalidReason {
     /// No session exists for this shell PID
     NotFound,
     
-    /// Session expired (15-minute hard timeout)
+    /// Session expired (45-minute hard timeout)
     Expired,
     
-    /// Session idle for too long (5-minute idle timeout)
+    /// Session idle for too long (15-minute idle timeout)
     IdleTimeout,
     
     /// Session invalidated by system lock
@@ -174,7 +239,7 @@ pub struct SessionStatus {
     /// When session was created
     pub created_at: SystemTime,
     
-    /// When session expires (15 minutes from creation)
+    /// When session expires (45 minutes from creation)
     pub expires_at: SystemTime,
     
     /// Last activity timestamp
@@ -224,8 +289,8 @@ impl std::fmt::Display for InvalidReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InvalidReason::NotFound => write!(f, "No session found"),
-            InvalidReason::Expired => write!(f, "Session expired (15-minute timeout)"),
-            InvalidReason::IdleTimeout => write!(f, "Session idle for 5+ minutes"),
+            InvalidReason::Expired => write!(f, "Session expired (45-minute timeout)"),
+            InvalidReason::IdleTimeout => write!(f, "Session idle for 15+ minutes"),
             InvalidReason::SystemLocked => write!(f, "System was locked"),
             InvalidReason::ManuallyLocked => write!(f, "Session manually locked"),
             InvalidReason::LockGenerationMismatch { session_gen, current_gen } => {

@@ -73,14 +73,9 @@ impl Paths {
         Ok(())
     }
 
-    /// Password hash file
-    pub fn pass_hash_file(&self) -> PathBuf {
-        self.lock_dir.join("pass.hash")
-    }
-
-    /// Salt file
-    pub fn salt_file(&self) -> PathBuf {
-        self.lock_dir.join("salt")
+    /// Database file (credentials, sessions, preferences)
+    pub fn db_file(&self) -> PathBuf {
+        self.lock_dir.join("sessions.db")
     }
 
     /// Display name file

@@ -23,8 +23,11 @@ impl Authenticator {
             return Ok(false);
         }
 
-        // Check if password is configured
-        if !self.paths.pass_hash_file().exists() {
+        // Check if password is configured in database
+        let db_path = self.paths.lock_dir().join("sessions.db");
+        let user_id = unsafe { libc::getuid() } as u32;
+        
+        if !PasswordHasher::has_credentials_in_db(&db_path, user_id)? {
             return Err(Error::ConfigNotFound);
         }
 
@@ -76,7 +79,11 @@ impl Authenticator {
         // Prompt for password
         let password = prompt_fn()?;
 
-        if PasswordHasher::verify_stored_password(&self.paths, &password)? {
+        // Verify password from database
+        let db_path = self.paths.lock_dir().join("sessions.db");
+        let user_id = unsafe { libc::getuid() } as u32;
+        
+        if PasswordHasher::verify_password_from_db(&db_path, user_id, &password)? {
             // ✅ SUCCESS - Reset counters and create session
             eprintln!("✅ Authentication successful!");
             AttemptsTracker::reset(&self.paths)?;

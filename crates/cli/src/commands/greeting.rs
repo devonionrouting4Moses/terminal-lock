@@ -1,14 +1,21 @@
 use chrono::{Local, Timelike};
 use colored::*;
-use terminal_lock_config::{load_preferences, DisplayNameManager};
-use terminal_lock_core::{error::*, types::GreetingStyle, Paths};
+use terminal_lock_config;
+use terminal_lock_core::{error::*, types::{GreetingStyle, ColorScheme}, Paths};
 use terminal_lock_quotes::QuoteFetcher;
 use terminal_lock_ui::ColorPalette;
+use crate::ipc_helper;
 
 pub async fn show_greeting(paths: &Paths) -> Result<()> {
-    let prefs = load_preferences(paths)?;
-    let palette = ColorPalette::new(prefs.color_scheme);
-    let name = DisplayNameManager::load(paths)?;
+    // Load preferences from database via IPC (delegated to config crate)
+    let (name, color_scheme_str, _, _, _, greeting_style_str) = match ipc_helper::get_preferences(1) {
+        Ok(Some(prefs)) => prefs,
+        _ => ("User".to_string(), "vibrant".to_string(), true, "matrix".to_string(), "all".to_string(), "dynamic".to_string()),
+    };
+    
+    let color_scheme = terminal_lock_config::parse_color_scheme(&color_scheme_str);
+    let palette = ColorPalette::new(color_scheme);
+    let greeting_style = terminal_lock_config::parse_greeting_style(&greeting_style_str);
 
     // Clear screen and show header
     print!("\x1B[2J\x1B[1;1H"); // Clear screen
@@ -16,38 +23,49 @@ pub async fn show_greeting(paths: &Paths) -> Result<()> {
     println!(
         "{}",
         "═══════════════════════════════════════════════════════════"
-            .color(match prefs.color_scheme {
-                terminal_lock_core::types::ColorScheme::Vibrant => Color::BrightCyan,
-                terminal_lock_core::types::ColorScheme::Pastel => Color::Cyan,
-                terminal_lock_core::types::ColorScheme::Minimal => Color::Green,
+            .color(match color_scheme {
+                ColorScheme::Vibrant => Color::BrightCyan,
+                ColorScheme::Pastel => Color::Cyan,
+                ColorScheme::Minimal => Color::Green,
             })
             .bold()
     );
 
     // Generate greeting
-    let greeting = generate_greeting(&name, prefs.greeting_style);
+    let greeting = generate_greeting(&name, greeting_style);
     println!("{}", palette.colorize(&greeting).bold());
 
     println!(
         "{}",
         "═══════════════════════════════════════════════════════════"
-            .color(match prefs.color_scheme {
-                terminal_lock_core::types::ColorScheme::Vibrant => Color::BrightCyan,
-                terminal_lock_core::types::ColorScheme::Pastel => Color::Cyan,
-                terminal_lock_core::types::ColorScheme::Minimal => Color::Green,
+            .color(match color_scheme {
+                ColorScheme::Vibrant => Color::BrightCyan,
+                ColorScheme::Pastel => Color::Cyan,
+                ColorScheme::Minimal => Color::Green,
             })
             .bold()
     );
 
     // Fetch and display quote
-    if prefs.animations {
+    let animations = match ipc_helper::get_preferences(1) {
+        Ok(Some((_, _, anim, _, _, _))) => anim,
+        _ => true,
+    };
+    
+    if animations {
         println!("\n{}", "Fetching inspiration...".cyan());
     }
 
     let fetcher = QuoteFetcher::new();
-    let quote = fetcher.fetch(prefs.quote_source).await;
+    let quote_source_str = match ipc_helper::get_preferences(1) {
+        Ok(Some((_, _, _, _, qs, _))) => qs,
+        _ => "all".to_string(),
+    };
+    let quote_source = terminal_lock_config::parse_quote_source(&quote_source_str);
+    
+    let quote = fetcher.fetch(quote_source).await;
 
-    if prefs.animations {
+    if animations {
         // Clear "Fetching..." line
         print!("\x1B[1A\x1B[2K");
     }
@@ -60,10 +78,10 @@ pub async fn show_greeting(paths: &Paths) -> Result<()> {
     println!(
         "\n{}\n",
         "═══════════════════════════════════════════════════════════"
-            .color(match prefs.color_scheme {
-                terminal_lock_core::types::ColorScheme::Vibrant => Color::BrightCyan,
-                terminal_lock_core::types::ColorScheme::Pastel => Color::Cyan,
-                terminal_lock_core::types::ColorScheme::Minimal => Color::Green,
+            .color(match color_scheme {
+                ColorScheme::Vibrant => Color::BrightCyan,
+                ColorScheme::Pastel => Color::Cyan,
+                ColorScheme::Minimal => Color::Green,
             })
             .bold()
     );

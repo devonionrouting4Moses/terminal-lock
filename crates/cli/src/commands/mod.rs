@@ -3,6 +3,7 @@ pub mod check;
 pub mod daemon;
 pub mod extend;
 pub mod greeting;
+pub mod help;
 pub mod lock;
 pub mod preferences;
 pub mod reset;

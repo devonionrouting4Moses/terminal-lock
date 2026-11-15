@@ -103,6 +103,75 @@ pub fn get_session_status(shell_pid: Option<u32>) -> Result<Vec<terminal_lock_ip
     }
 }
 
+/// Get failed attempt history for a terminal
+pub fn get_attempt_history(shell_pid: u32) -> Result<u32> {
+    let request = DaemonRequest::GetAttemptHistory { shell_pid };
+    
+    match DaemonClient::send_message(request) {
+        Ok(DaemonResponse::AttemptHistory { failed_attempts, .. }) => {
+            Ok(failed_attempts)
+        }
+        Ok(_) => {
+            eprintln!("⚠️  Unexpected daemon response");
+            Err(terminal_lock_core::error::Error::Unknown("Unexpected daemon response".to_string()))
+        }
+        Err(e) => {
+            eprintln!("⚠️  Cannot get attempt history: {}", e);
+            Err(terminal_lock_core::error::Error::Unknown(format!("IPC error: {}", e)))
+        }
+    }
+}
+
+/// Log a failed authentication attempt to daemon database
+pub fn log_failed_attempt(shell_pid: u32) -> Result<()> {
+    let request = DaemonRequest::LogFailedAttempt { shell_pid };
+    
+    match DaemonClient::send_message(request) {
+        Ok(DaemonResponse::FailedAttemptLogged { .. }) => {
+            Ok(())
+        }
+        Ok(_) => {
+            // Unexpected response, but don't fail
+            Ok(())
+        }
+        Err(_) => {
+            // Daemon unavailable, silently fail
+            Ok(())
+        }
+    }
+}
+
+/// Get all constants from daemon database
+pub fn get_constants() -> Result<(u64, u64, u32, u32, u64)> {
+    let request = DaemonRequest::GetConstants;
+    
+    match DaemonClient::send_message(request) {
+        Ok(DaemonResponse::Constants {
+            session_ttl_secs,
+            inactivity_timeout_secs,
+            max_attempts_per_session,
+            max_total_attempts,
+            lockout_duration_secs,
+        }) => {
+            Ok((
+                session_ttl_secs,
+                inactivity_timeout_secs,
+                max_attempts_per_session,
+                max_total_attempts,
+                lockout_duration_secs,
+            ))
+        }
+        Ok(_) => {
+            eprintln!("⚠️  Unexpected daemon response");
+            Err(terminal_lock_core::error::Error::Unknown("Unexpected daemon response".to_string()))
+        }
+        Err(e) => {
+            eprintln!("⚠️  Cannot get constants: {}", e);
+            Err(terminal_lock_core::error::Error::Unknown(format!("IPC error: {}", e)))
+        }
+    }
+}
+
 /// Check if daemon is running
 pub fn is_daemon_running() -> bool {
     let request = DaemonRequest::Ping;
@@ -111,4 +180,30 @@ pub fn is_daemon_running() -> bool {
         Ok(DaemonResponse::Pong) => true,
         _ => false,
     }
+}
+
+/// Save user preferences to daemon (delegates to config crate)
+pub fn save_preferences(
+    user_id: u32,
+    display_name: &str,
+    color_scheme: &str,
+    animations: bool,
+    animation_type: &str,
+    quote_source: &str,
+    greeting_style: &str,
+) -> Result<()> {
+    terminal_lock_config::save_preferences_to_db(
+        user_id,
+        display_name,
+        color_scheme,
+        animations,
+        animation_type,
+        quote_source,
+        greeting_style,
+    )
+}
+
+/// Get user preferences from daemon (delegates to config crate)
+pub fn get_preferences(user_id: u32) -> Result<Option<(String, String, bool, String, String, String)>> {
+    terminal_lock_config::get_preferences_from_db(user_id)
 }

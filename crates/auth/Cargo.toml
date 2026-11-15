@@ -21,8 +21,13 @@ rand = {workspace = true}
 sha2 = {workspace = true}
 hex = {workspace = true}
 
+# Database
+rusqlite = { version = "0.37", features = ["bundled"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
 # System interaction
 nix = { version = "0.30", features = ["process", "signal"] }
+libc = "0.2"
 
 [[example]]
 name = "custom_auth"

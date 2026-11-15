@@ -11,8 +11,8 @@ pub struct Session;
 impl Session {
     /// Check if THIS terminal's session is valid
     /// IMPORTANT: Each terminal PID has its own session file
-    /// Sessions have a FIXED 15-minute duration (no extension on command)
-    /// Sessions expire after 5 minutes of inactivity
+    /// Sessions have a FIXED 45-minute duration (no extension on command)
+    /// Sessions expire after 15 minutes of inactivity
     pub fn is_valid(paths: &Paths) -> Result<bool> {
         let session_file = paths.session_file(); // Uses current PID
         
@@ -27,17 +27,17 @@ impl Session {
 
         let now = Utc::now();
         
-        // Check if session has expired (15-minute fixed duration)
+        // Check if session has expired (45-minute fixed duration)
         if now >= session.expiry {
             // Session expired - remove it
             let _ = std::fs::remove_file(&session_file);
             return Ok(false);
         }
 
-        // Check if session has been inactive for 5 minutes
+        // Check if session has been inactive for 15 minutes
         let inactivity_duration = now.signed_duration_since(session.last_activity);
         if inactivity_duration >= chrono::Duration::from_std(INACTIVITY_TIMEOUT).unwrap() {
-            // Inactive for 5+ minutes - expire session
+            // Inactive for 15+ minutes - expire session
             let _ = std::fs::remove_file(&session_file);
             return Ok(false);
         }

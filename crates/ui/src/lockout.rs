@@ -56,7 +56,7 @@ impl LockoutDisplay {
         // Clear screen after countdown
         print!("\x1B[2J\x1B[H");
         println!(
-            "\n{}",
+            "{}",
             "⏳ Lockout period expired. You may try again...".cyan().bold()
         );
         thread::sleep(Duration::from_secs(2));
@@ -214,7 +214,7 @@ impl LockoutDisplay {
         ).ok();
 
         println!(
-            "\n{}",
+            "{}",
             "⏳ Lockout period expired. You may try again...".cyan().bold()
         );
         thread::sleep(Duration::from_secs(2));

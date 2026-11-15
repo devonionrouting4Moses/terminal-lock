@@ -28,6 +28,42 @@ impl Daemon {
                 self.handle_get_session_status(shell_pid)
             }
             
+            DaemonRequest::GetAttemptHistory { shell_pid } => {
+                self.handle_get_attempt_history(shell_pid)
+            }
+            
+            DaemonRequest::LogFailedAttempt { shell_pid } => {
+                self.handle_log_failed_attempt(shell_pid)
+            }
+            
+            DaemonRequest::GetConstants => {
+                self.handle_get_constants()
+            }
+            
+            DaemonRequest::SavePreferences {
+                user_id,
+                display_name,
+                color_scheme,
+                animations,
+                animation_type,
+                quote_source,
+                greeting_style,
+            } => {
+                self.handle_save_preferences(
+                    user_id,
+                    &display_name,
+                    &color_scheme,
+                    animations,
+                    &animation_type,
+                    &quote_source,
+                    &greeting_style,
+                )
+            }
+            
+            DaemonRequest::GetPreferences { user_id } => {
+                self.handle_get_preferences(user_id)
+            }
+            
             DaemonRequest::ListSessions => {
                 self.handle_list_sessions()
             }
@@ -173,6 +209,71 @@ impl Daemon {
         Ok(DaemonResponse::SessionStatus { sessions })
     }
 
+    fn handle_get_attempt_history(&self, shell_pid: u32) -> Result<DaemonResponse, String> {
+        let store = self.session_store.lock().map_err(|e| e.to_string())?;
+        
+        let failed_attempts = store.get_failed_attempts_for_terminal(shell_pid)
+            .map_err(|e| e.to_string())?;
+        
+        Ok(DaemonResponse::AttemptHistory {
+            shell_pid,
+            failed_attempts,
+        })
+    }
+
+    fn handle_log_failed_attempt(&self, shell_pid: u32) -> Result<DaemonResponse, String> {
+        let store = self.session_store.lock().map_err(|e| e.to_string())?;
+        
+        // Log failed attempt to database (user_id = 1 for now, single-user system)
+        store.log_attempt(1, false, Some(shell_pid), Some("Invalid password"))
+            .map_err(|e| e.to_string())?;
+        
+        Ok(DaemonResponse::FailedAttemptLogged { shell_pid })
+    }
+
+    fn handle_get_constants(&self) -> Result<DaemonResponse, String> {
+        let store = self.session_store.lock().map_err(|e| e.to_string())?;
+        
+        // Get constants from database with defaults as fallback
+        let session_ttl_secs: u64 = store.get_constant("SESSION_TTL")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2700); // 45 minutes
+        
+        let inactivity_timeout_secs: u64 = store.get_constant("INACTIVITY_TIMEOUT")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(900); // 15 minutes
+        
+        let max_attempts_per_session: u32 = store.get_constant("MAX_ATTEMPTS_PER_SESSION")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(3);
+        
+        let max_total_attempts: u32 = store.get_constant("MAX_TOTAL_ATTEMPTS")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(9);
+        
+        let lockout_duration_secs: u64 = store.get_constant("LOCKOUT_DURATION")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(60);
+        
+        Ok(DaemonResponse::Constants {
+            session_ttl_secs,
+            inactivity_timeout_secs,
+            max_attempts_per_session,
+            max_total_attempts,
+            lockout_duration_secs,
+        })
+    }
+
     fn handle_list_sessions(&self) -> Result<DaemonResponse, String> {
         let store = self.session_store.lock().map_err(|e| e.to_string())?;
         
@@ -248,5 +349,51 @@ impl Daemon {
     fn handle_shutdown(&self) -> Result<DaemonResponse, String> {
         // Graceful shutdown
         std::process::exit(0);
+    }
+
+    fn handle_save_preferences(
+        &self,
+        user_id: u32,
+        display_name: &str,
+        color_scheme: &str,
+        animations: bool,
+        animation_type: &str,
+        quote_source: &str,
+        greeting_style: &str,
+    ) -> Result<DaemonResponse, String> {
+        let store = self.session_store.lock().map_err(|e| e.to_string())?;
+        
+        store.save_preferences(
+            user_id,
+            display_name,
+            color_scheme,
+            animations,
+            animation_type,
+            quote_source,
+            greeting_style,
+        ).map_err(|e| e.to_string())?;
+        
+        Ok(DaemonResponse::PreferencesSaved { user_id })
+    }
+
+    fn handle_get_preferences(&self, user_id: u32) -> Result<DaemonResponse, String> {
+        let store = self.session_store.lock().map_err(|e| e.to_string())?;
+        
+        match store.get_preferences(user_id).map_err(|e| e.to_string())? {
+            Some((display_name, color_scheme, animations, animation_type, quote_source, greeting_style)) => {
+                Ok(DaemonResponse::Preferences {
+                    user_id,
+                    display_name,
+                    color_scheme,
+                    animations,
+                    animation_type,
+                    quote_source,
+                    greeting_style,
+                })
+            }
+            None => {
+                Err(format!("No preferences found for user {}", user_id))
+            }
+        }
     }
 }

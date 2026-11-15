@@ -1,15 +1,59 @@
 use colored::*;
 use console::Term;
 use terminal_lock_auth::{lockout::*, password::PasswordHasher, SystemLocker};
-use terminal_lock_config::load_preferences;
-use terminal_lock_core::{constants::*, error::*, Paths};
+use terminal_lock_config;
+use terminal_lock_core::{constants::*, error::*, Paths, types::ColorScheme};
 use terminal_lock_ui::{ColorPalette, LockoutDisplay};
 use crate::ipc_helper;
+use std::path::PathBuf;
 
 pub async fn run(paths: &Paths) -> Result<()> {
     let term = Term::stderr();
-    let prefs = load_preferences(paths)?;
-    let palette = ColorPalette::new(prefs.color_scheme);
+    
+    // Check if password is configured
+    let user_id = unsafe { libc::getuid() } as u32;
+    let db_path = paths.lock_dir().join("sessions.db");
+    
+    match PasswordHasher::has_credentials_in_db(&db_path, user_id) {
+        Ok(false) => {
+            eprintln!();
+            eprintln!("{}", "╔════════════════════════════════════════════════════════╗".cyan());
+            eprintln!("{}", "║  🔐 Terminal Lock - Initial Setup Required             ║".cyan().bold());
+            eprintln!("{}", "╚════════════════════════════════════════════════════════╝".cyan());
+            eprintln!();
+            eprintln!("{}", "❌ Password not configured!".red().bold());
+            eprintln!();
+            eprintln!("{}", "To set up Terminal Lock, run:".white());
+            eprintln!("{}", "  terminal-lock setup".cyan().bold());
+            eprintln!();
+            eprintln!("{}", "This will guide you through:".white());
+            eprintln!("  • Setting a secure password");
+            eprintln!("  • Configuring display preferences");
+            eprintln!("  • Choosing animations and themes");
+            eprintln!();
+            eprintln!("{}", "After setup, open a new terminal to authenticate.".yellow());
+            eprintln!();
+            
+            // Return success so shell doesn't close
+            return Ok(());
+        }
+        Err(e) => {
+            eprintln!("{}", format!("❌ Error checking credentials: {}", e).red());
+            return Err(e);
+        }
+        Ok(true) => {
+            // Credentials exist, continue
+        }
+    }
+    
+    // Load preferences from database via IPC (delegated to config crate)
+    let (_, color_scheme_str, _, _, _, _) = match ipc_helper::get_preferences(1) {
+        Ok(Some(prefs)) => prefs,
+        _ => ("User".to_string(), "vibrant".to_string(), true, "matrix".to_string(), "all".to_string(), "dynamic".to_string()),
+    };
+    
+    let color_scheme = terminal_lock_config::parse_color_scheme(&color_scheme_str);
+    let palette = ColorPalette::new(color_scheme);
 
     // Check laptop unlock status first (resets counter)
     AttemptsTracker::check_laptop_unlock(paths)?;
@@ -87,8 +131,16 @@ pub async fn run(paths: &Paths) -> Result<()> {
                 .read_secure_line()
                 .map_err(|e| Error::Unknown(format!("Failed to read password: {}", e)))?;
 
-            // Verify password
-            if PasswordHasher::verify_stored_password(paths, &password)? {
+            // Verify password from database
+            let password_valid = match PasswordHasher::verify_password_from_db(&db_path, user_id, &password) {
+                Ok(valid) => valid,
+                Err(e) => {
+                    eprintln!("{}", format!("✗ Authentication error: {}", e).red());
+                    false
+                }
+            };
+
+            if password_valid {
                 // SUCCESS!
                 println!("\n{}", "✓ Authentication successful!".green().bold());
 
@@ -102,8 +154,8 @@ pub async fn run(paths: &Paths) -> Result<()> {
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or_else(|| std::process::id());
                 
-                // Get password hash for daemon
-                let password_hash = PasswordHasher::get_stored_hash(paths)?;
+                // Get password hash from database for daemon
+                let password_hash = PasswordHasher::get_stored_hash_from_db(&db_path, user_id)?;
                 
                 // Create session via IPC with fallback to file-based
                 match ipc_helper::create_session_with_fallback(shell_pid, password_hash.trim(), paths) {
@@ -125,6 +177,13 @@ pub async fn run(paths: &Paths) -> Result<()> {
             // FAILED ATTEMPT
             session_attempts += 1;
             total_attempts = AttemptsTracker::increment(paths)?;
+            
+            // Log failed attempt to daemon database
+            let shell_pid = std::env::var("TERMINAL_LOCK_SESSION_PID")
+                .ok()
+                .and_then(|s| s.parse::<u32>().ok())
+                .unwrap_or_else(|| std::process::id());
+            let _ = ipc_helper::log_failed_attempt(shell_pid);
 
             // Check if we hit 9 total attempts
             if total_attempts >= MAX_TOTAL_ATTEMPTS {

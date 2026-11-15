@@ -4,7 +4,6 @@ pub mod ipc_helper;
 
 use clap::{Parser, Subcommand};
 use terminal_lock_auth::Authenticator;
-use terminal_lock_config::load_preferences;
 use terminal_lock_core::{error::Result, types::AnimationType, LockMonitor, Paths};
 use terminal_lock_ui::AnimationManager;
 
@@ -12,6 +11,7 @@ use terminal_lock_ui::AnimationManager;
 #[command(name = "terminal-lock")]
 #[command(about = "Enhanced terminal authentication system with animations", long_about = None)]
 #[command(version)]
+#[command(disable_help_subcommand = true)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -45,21 +45,24 @@ enum Commands {
     
     /// Run authentication (default when called from shell)
     Auth,
+    
+    /// Print help message
+    Help,
 }
 
 /// Start animation daemon in background (separate process)
 fn start_animation_daemon(paths: &Paths) -> Result<()> {
     // Spawn animation in a separate thread that won't interfere with terminal
-    let paths_clone = paths.clone();
-    
     std::thread::spawn(move || {
-        if let Ok(prefs) = load_preferences(&paths_clone) {
-            if prefs.animations {
+        // Load preferences from database via IPC
+        if let Ok(Some((_, _, animations, animation_type_str, _, _))) = ipc_helper::get_preferences(1) {
+            if animations {
                 let mut animation = AnimationManager::new();
-                match prefs.animation_type {
-                    AnimationType::Matrix => animation.start_matrix(),
-                    AnimationType::Starfield => animation.start_starfield(),
-                    AnimationType::Particles => animation.start_particles(),
+                match animation_type_str.as_str() {
+                    "matrix" => animation.start_matrix(),
+                    "starfield" => animation.start_starfield(),
+                    "particles" => animation.start_particles(),
+                    _ => animation.start_matrix(),
                 }
                 // Keep animation alive indefinitely
                 std::mem::forget(animation);
@@ -178,6 +181,9 @@ async fn main() -> Result<()> {
         Some(Commands::Daemon) => {
             commands::daemon::run(&paths)?;
         }
+        Some(Commands::Help) => {
+            commands::help::run()?;
+        }
         Some(Commands::Auth) | None => {
             // Default behavior - authenticate THIS terminal
             // IMPORTANT: Each terminal is independent
@@ -210,7 +216,7 @@ async fn main() -> Result<()> {
             match commands::auth::run(&paths).await {
                 Ok(_) => {
                     // Authentication successful for THIS terminal
-                    // Create session for THIS terminal (lasts 15 minutes)
+                    // Create session for THIS terminal (lasts 45 minutes)
                     
                     // NOW start services AFTER successful authentication
                     start_lock_monitor(&paths)?;
@@ -220,6 +226,11 @@ async fn main() -> Result<()> {
                     commands::greeting::show_greeting(&paths).await?;
                     
                     // Exit - animations run in background thread, shell continues normally
+                    return Ok(());
+                }
+                Err(terminal_lock_core::error::Error::ConfigNotFound) => {
+                    // Setup not done yet - allow shell to open normally
+                    // User will be prompted to run setup on next terminal open
                     return Ok(());
                 }
                 Err(e) => {

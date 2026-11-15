@@ -37,6 +37,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Date and time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Serialization
+serde_json = "1.0"
+
 # Filesystem and paths
 dirs = "6.0"
+libc = "0.2"
 
